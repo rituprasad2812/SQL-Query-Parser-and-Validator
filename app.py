@@ -1,7 +1,7 @@
 import streamlit as st
 import graphviz
 from lexer import Lexer
-from parser import Parser
+from parser import Parser, SelectStatement, InsertStatement, UpdateStatement, DeleteStatement
 from semantic_analyzer import SemanticAnalyzer
 from schema import SCHEMA
 
@@ -27,102 +27,141 @@ if st.button("Analyze Query"):
     if query.strip():
         try:
             # Step 1: Lexical Analysis
-            st.subheader("Step 1: Lexical Analysis (Tokenization)")
-            lexer = Lexer(query)
-            tokens = lexer.tokenize()
+            with st.container():
+                st.subheader("Step 1: Lexical Analysis (Tokenization)")
+                lexer = Lexer(query)
+                tokens = lexer.tokenize()
 
-            token_display = ", ".join([f"{t.type}({t.value})" for t in tokens])
-            st.code(token_display, language="text")
-            st.success(f"✅ {len(tokens)} tokens generated")
+                token_display = ", ".join([f"{t.type}({t.value})" for t in tokens])
+                st.code(token_display, language="text")
+                st.success(f"{len(tokens)} tokens generated")
 
             # Step 2: Syntax Analysis
-            st.subheader("Step 2: Syntax Analysis (Parsing)")
-            parser = Parser(tokens)
-            ast = parser.parse()
+            with st.container():
+                st.subheader("Step 2: Syntax Analysis (Parsing)")
+                parser = Parser(tokens)
+                ast = parser.parse()
 
-            st.write(f"**Columns:** {', '.join(ast.columns)}")
-            st.write(f"**Table:** {ast.table}")
-            st.write(f"**Where Condition:** {ast.where if ast.where else 'None'}")
-            st.success("✅ Syntax is correct")
+                # Handle different statement types
+                if hasattr(ast, 'columns'):
+                    st.write(f"**Columns:** {', '.join(ast.columns)}")
+                if hasattr(ast, 'table'):
+                    st.write(f"**Table:** {ast.table}")
+                if hasattr(ast, 'values'):
+                    st.write(f"**Values:** {', '.join(ast.values)}")
+                if hasattr(ast, 'assignments'):
+                    st.write(f"**Assignments:** {ast.assignments}")
+                if hasattr(ast, 'where'):
+                    st.write(f"**Where Condition:** {ast.where if ast.where else 'None'}")
+                
+                st.success("Syntax is correct")
 
-            # Visualize Parse Tree
-            st.write("**Parse Tree:**")
-            dot = graphviz.Digraph()
-            dot.attr(bgcolor='transparent')
-            dot.attr('edge', color='white')
-            dot.attr('node', fontcolor='black')
-            dot.attr('node', shape='ellipse', style='filled', fillcolor='lightblue')
+                # Visualize Parse Tree
+                st.write("**Parse Tree:**")
+                dot = graphviz.Digraph()
+                dot.attr(bgcolor='transparent')
+                dot.attr('edge', color='white')
+                dot.attr('node', fontcolor='black')
+                dot.attr('node', shape='ellipse', style='filled', fillcolor='lightblue')
 
-            # Root node
-            dot.node('SELECT_STMT', 'SELECT')
+                if isinstance(ast, SelectStatement):
+                    dot.node('ROOT', 'SELECT')
+                    dot.node('COLS', 'COLUMNS')
+                    dot.edge('ROOT', 'COLS')
+                    for i, col in enumerate(ast.columns):
+                        dot.node(f'col_{i}', col, fillcolor='lightgreen')
+                        dot.edge('COLS', f'col_{i}')
+                    dot.node('FROM', 'FROM')
+                    dot.edge('ROOT', 'FROM')
+                    dot.node('TABLE', ast.table, fillcolor='lightyellow')
+                    dot.edge('FROM', 'TABLE')
+                    if ast.where:
+                        dot.node('WHERE', 'WHERE')
+                        dot.edge('ROOT', 'WHERE')
+                        dot.node('COND', str(ast.where), fillcolor='lightpink')
+                        dot.edge('WHERE', 'COND')
 
-            # Columns branch
-            dot.node('COLS', 'COLUMNS')
-            dot.edge('SELECT_STMT', 'COLS')
-            for i, col in enumerate(ast.columns):
-                dot.node(f'col_{i}', col, fillcolor='lightgreen')
-                dot.edge('COLS', f'col_{i}')
+                elif isinstance(ast, InsertStatement):
+                    dot.node('ROOT', 'INSERT')
+                    dot.node('INTO', 'INTO')
+                    dot.edge('ROOT', 'INTO')
+                    dot.node('TABLE', ast.table, fillcolor='lightyellow')
+                    dot.edge('INTO', 'TABLE')
+                    dot.node('COLS', 'COLUMNS')
+                    dot.edge('ROOT', 'COLS')
+                    for i, col in enumerate(ast.columns):
+                        dot.node(f'col_{i}', col, fillcolor='lightgreen')
+                        dot.edge('COLS', f'col_{i}')
+                    dot.node('VALS', 'VALUES')
+                    dot.edge('ROOT', 'VALS')
+                    for i, val in enumerate(ast.values):
+                        dot.node(f'val_{i}', str(val), fillcolor='lightpink')
+                        dot.edge('VALS', f'val_{i}')
 
-            # FROM branch
-            dot.node('FROM', 'FROM')
-            dot.edge('SELECT_STMT', 'FROM')
-            dot.node('TABLE', ast.table, fillcolor='lightyellow')
-            dot.edge('FROM', 'TABLE')
+                elif isinstance(ast, UpdateStatement):
+                    dot.node('ROOT', 'UPDATE')
+                    dot.node('TABLE', ast.table, fillcolor='lightyellow')
+                    dot.edge('ROOT', 'TABLE')
+                    dot.node('SET', 'SET')
+                    dot.edge('ROOT', 'SET')
+                    for i, (col, val) in enumerate(ast.assignments):
+                        dot.node(f'assign_{i}', f'{col} = {val}', fillcolor='lightgreen')
+                        dot.edge('SET', f'assign_{i}')
+                    if ast.where:
+                        dot.node('WHERE', 'WHERE')
+                        dot.edge('ROOT', 'WHERE')
+                        dot.node('COND', str(ast.where), fillcolor='lightpink')
+                        dot.edge('WHERE', 'COND')
 
-            # WHERE branch (if exists)
-            if ast.where:
-                dot.node('WHERE', 'WHERE')
-                dot.edge('SELECT_STMT', 'WHERE')
+                elif isinstance(ast, DeleteStatement):
+                    dot.node('ROOT', 'DELETE')
+                    dot.node('FROM', 'FROM')
+                    dot.edge('ROOT', 'FROM')
+                    dot.node('TABLE', ast.table, fillcolor='lightyellow')
+                    dot.edge('FROM', 'TABLE')
+                    if ast.where:
+                        dot.node('WHERE', 'WHERE')
+                        dot.edge('ROOT', 'WHERE')
+                        dot.node('COND', str(ast.where), fillcolor='lightpink')
+                        dot.edge('WHERE', 'COND')
 
-                # Build condition tree
-                def add_condition(cond, parent_id, count=0):
-                    cond_id = f'cond_{count}'
-                    dot.node(cond_id, cond.operator, fillcolor='lightpink')
-                    dot.edge(parent_id, cond_id)
-
-                    # Left side (column)
-                    left_id = f'left_{count}'
-                    dot.node(left_id, cond.left, fillcolor='white')
-                    dot.edge(cond_id, left_id)
-
-                    # Right side (value)
-                    right_id = f'right_{count}'
-                    dot.node(right_id, str(cond.right), fillcolor='white')
-                    dot.edge(cond_id, right_id)
-
-                    # Handle AND/OR
-                    if cond.next_condition:
-                        logic_id = f'logic_{count}'
-                        dot.node(logic_id, cond.logical_op, fillcolor='orange')
-                        dot.edge('WHERE', logic_id)
-                        add_condition(cond.next_condition, logic_id, count + 1)
-
-                add_condition(ast.where, 'WHERE')
-
-            st.graphviz_chart(dot)
+                st.graphviz_chart(dot)
 
             # Step 3: Semantic Analysis
-            st.subheader("Step 3: Semantic Analysis (Validation)")
-            analyzer = SemanticAnalyzer()
-            is_valid = analyzer.analyze(ast)
+            with st.container():
+                st.subheader("Step 3: Semantic Analysis (Validation)")
+                analyzer = SemanticAnalyzer()
+                is_valid = analyzer.analyze(ast)
 
-            if is_valid:
-                st.success("🎉 Query is VALID! All checks passed.")
-            else:
-                st.error("❌ Query has errors:")
-                for error in analyzer.get_errors():
-                    st.write(f"- {error}")
+                if is_valid:
+                    st.success("Query is VALID! All checks passed.")
+                else:
+                    st.error("ERRORS DETECTED IN SEMANTIC ANALYSIS PHASE:")
+                    for error in analyzer.get_errors():
+                        st.write(f"{error}")
+                    st.info("**Note: Lexical and Syntax phases passed, but semantic validation failed.**")
 
         except SyntaxError as e:
-            st.error(f"❌ Syntax Error: {str(e)}")
+            st.error(f"ERROR DETECTED IN SYNTAX ANALYSIS PHASE:")
+            st.write(f"{str(e)}")
+            st.info("**Note: Lexical analysis passed, but syntax parsing failed.**")
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"ERROR DETECTED IN LEXICAL ANALYSIS PHASE:")
+            st.write(f"{str(e)}")
     else:
         st.warning("Please enter a query")
 
 # Sidebar with examples
 st.sidebar.title("Example Queries")
+st.sidebar.subheader("SELECT")
 st.sidebar.code("SELECT * FROM students", language="sql")
 st.sidebar.code("SELECT name, age FROM students WHERE age > 18", language="sql")
-st.sidebar.code("SELECT name FROM students WHERE department = 'CS'", language="sql")
-st.sidebar.code("SELECT name, age FROM students WHERE age > 18 AND department = 'CS'", language="sql")
+
+st.sidebar.subheader("INSERT")
+st.sidebar.code("INSERT INTO students (name, age, department) VALUES ('John', 20, 'CS')", language="sql")
+
+st.sidebar.subheader("UPDATE")
+st.sidebar.code("UPDATE students SET age = 21 WHERE name = 'John'", language="sql")
+
+st.sidebar.subheader("DELETE")
+st.sidebar.code("DELETE FROM students WHERE age < 18", language="sql")
