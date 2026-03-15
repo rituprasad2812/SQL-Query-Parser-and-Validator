@@ -203,9 +203,111 @@ with tab1:
 
                     st.graphviz_chart(dot)
 
-                # Step 3: Semantic Analysis
+                                                # Step 3: Semantic Analysis
                 with st.container():
                     st.subheader("Step 3: Semantic Analysis (Validation)")
+                    
+                    # Build Symbol Table
+                    import pandas as pd
+                    
+                    st.write("**Symbol Table:**")
+                    symbol_data = []
+                    
+                    # Add table entry
+                    if hasattr(ast, 'table'):
+                        symbol_data.append({
+                            "Identifier": ast.table,
+                            "Type": "TABLE",
+                            "Category": "Schema",
+                            "Scope": "Global"
+                        })
+                    
+                    # Add column entries for SELECT
+                    if isinstance(ast, SelectStatement):
+                        if ast.columns != ['*']:
+                            for col in ast.columns:
+                                col_type = SCHEMA.get(ast.table, {}).get(col, "UNKNOWN")
+                                symbol_data.append({
+                                    "Identifier": col,
+                                    "Type": col_type,
+                                    "Category": "Column",
+                                    "Scope": ast.table
+                                })
+                        else:
+                            for col, col_type in SCHEMA.get(ast.table, {}).items():
+                                symbol_data.append({
+                                    "Identifier": col,
+                                    "Type": col_type,
+                                    "Category": "Column",
+                                    "Scope": ast.table
+                                })
+                    
+                    # Add column entries for INSERT
+                    if isinstance(ast, InsertStatement):
+                        for col in ast.columns:
+                            col_type = SCHEMA.get(ast.table, {}).get(col, "UNKNOWN")
+                            symbol_data.append({
+                                "Identifier": col,
+                                "Type": col_type,
+                                "Category": "Column",
+                                "Scope": ast.table
+                            })
+                        for val in ast.values:
+                            symbol_data.append({
+                                "Identifier": val,
+                                "Type": "LITERAL",
+                                "Category": "Value",
+                                "Scope": "Local"
+                            })
+                    
+                    # Add column entries for UPDATE
+                    if isinstance(ast, UpdateStatement):
+                        for col, val in ast.assignments:
+                            col_type = SCHEMA.get(ast.table, {}).get(col, "UNKNOWN")
+                            symbol_data.append({
+                                "Identifier": col,
+                                "Type": col_type,
+                                "Category": "Column (SET)",
+                                "Scope": ast.table
+                            })
+                            symbol_data.append({
+                                "Identifier": val,
+                                "Type": "LITERAL",
+                                "Category": "Value",
+                                "Scope": "Local"
+                            })
+                    
+                    # Add WHERE condition identifiers
+                    if hasattr(ast, 'where') and ast.where:
+                        col_type = SCHEMA.get(ast.table, {}).get(ast.where.left, "UNKNOWN")
+                        symbol_data.append({
+                            "Identifier": ast.where.left,
+                            "Type": col_type,
+                            "Category": "Column (WHERE)",
+                            "Scope": ast.table
+                        })
+                        symbol_data.append({
+                            "Identifier": ast.where.right,
+                            "Type": "LITERAL",
+                            "Category": "Value",
+                            "Scope": "Local"
+                        })
+                    
+                    # Add JOIN table entries
+                    if hasattr(ast, 'joins') and ast.joins:
+                        for join in ast.joins:
+                            symbol_data.append({
+                                "Identifier": join.table,
+                                "Type": "TABLE",
+                                "Category": "Schema (JOIN)",
+                                "Scope": "Global"
+                            })
+                    
+                    # Display Symbol Table
+                    df = pd.DataFrame(symbol_data)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    
+                    st.write("**Validation Result:**")
                     analyzer = SemanticAnalyzer()
                     is_valid = analyzer.analyze(ast)
 
