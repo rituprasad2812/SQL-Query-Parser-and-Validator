@@ -7,15 +7,12 @@ class SemanticAnalyzer:
         self.errors = []
     
     def analyze(self, ast):
-        """Main analysis function"""
         self.errors = []
         
-        # Check if table exists
         if not self.check_table_exists(ast.table):
             self.errors.append(f"Table '{ast.table}' does not exist")
             return False
         
-        # Handle different statement types
         if isinstance(ast, SelectStatement):
             self.analyze_select(ast)
         elif isinstance(ast, InsertStatement):
@@ -28,16 +25,44 @@ class SemanticAnalyzer:
         return len(self.errors) == 0
     
     def analyze_select(self, ast):
-        """Analyze SELECT statement"""
+        # Check columns
         if ast.columns != ['*']:
             for col in ast.columns:
-                if not self.check_column_exists(ast.table, col):
-                    self.errors.append(f"Column '{col}' does not exist in table '{ast.table}'")
+                if not self.check_column_in_any_table(col, ast):
+                    self.errors.append(f"Column '{col}' does not exist")
+        
+        # Check JOINs
+        for join in ast.joins:
+            if not self.check_table_exists(join.table):
+                self.errors.append(f"Table '{join.table}' does not exist")
+        
+        # Check WHERE
         if ast.where:
             self.check_condition(ast.table, ast.where)
+        
+        # Check GROUP BY
+        if ast.group_by:
+            for col in ast.group_by:
+                if not self.check_column_in_any_table(col, ast):
+                    self.errors.append(f"GROUP BY column '{col}' does not exist")
+        
+        # Check ORDER BY
+        if ast.order_by:
+            for col, direction in ast.order_by:
+                if not self.check_column_in_any_table(col, ast):
+                    self.errors.append(f"ORDER BY column '{col}' does not exist")
+    
+    def check_column_in_any_table(self, column, ast):
+        # Check in main table
+        if self.check_column_exists(ast.table, column):
+            return True
+        # Check in joined tables
+        for join in ast.joins:
+            if self.check_column_exists(join.table, column):
+                return True
+        return False
     
     def analyze_insert(self, ast):
-        """Analyze INSERT statement"""
         for col in ast.columns:
             if not self.check_column_exists(ast.table, col):
                 self.errors.append(f"Column '{col}' does not exist in table '{ast.table}'")
@@ -45,7 +70,6 @@ class SemanticAnalyzer:
             self.errors.append(f"Column count ({len(ast.columns)}) doesn't match value count ({len(ast.values)})")
     
     def analyze_update(self, ast):
-        """Analyze UPDATE statement"""
         for col, val in ast.assignments:
             if not self.check_column_exists(ast.table, col):
                 self.errors.append(f"Column '{col}' does not exist in table '{ast.table}'")
@@ -53,7 +77,6 @@ class SemanticAnalyzer:
             self.check_condition(ast.table, ast.where)
     
     def analyze_delete(self, ast):
-        """Analyze DELETE statement"""
         if ast.where:
             self.check_condition(ast.table, ast.where)
     

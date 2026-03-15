@@ -56,7 +56,7 @@ class Lexer:
     def tokenize(self):
         """Main function: convert query to list of tokens"""
         tokens = []
-        keywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'INSERT', 'UPDATE', 'DELETE', 'INTO', 'VALUES', 'SET']
+        keywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'INSERT', 'UPDATE', 'DELETE', 'INTO', 'VALUES', 'SET', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'ON', 'GROUP', 'BY', 'HAVING', 'ORDER', 'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN']
         
         while self.current_char:
             # Skip spaces

@@ -4,13 +4,27 @@ class ASTNode:
 
 
 class SelectStatement(ASTNode):
-    def __init__(self, columns, table, where=None):
+    def __init__(self, columns, table, joins=None, where=None, group_by=None, having=None, order_by=None):
         self.columns = columns
         self.table = table
+        self.joins = joins or []
         self.where = where
+        self.group_by = group_by
+        self.having = having
+        self.order_by = order_by
     
     def __repr__(self):
-        return f"SelectStatement(columns={self.columns}, table={self.table}, where={self.where})"
+        return f"SelectStatement(columns={self.columns}, table={self.table}, joins={self.joins}, where={self.where}, group_by={self.group_by}, order_by={self.order_by})"
+
+
+class JoinClause(ASTNode):
+    def __init__(self, join_type, table, condition):
+        self.join_type = join_type
+        self.table = table
+        self.condition = condition
+    
+    def __repr__(self):
+        return f"{self.join_type} JOIN {self.table} ON {self.condition}"
 
 
 class Condition(ASTNode):
@@ -90,15 +104,90 @@ class Parser:
         raise SyntaxError(f"Unexpected keyword: {self.current_token.value}")
 
     def parse_select(self):
-        self.expect('KEYWORD')
+        self.expect('KEYWORD')  # SELECT
         columns = self.parse_columns()
-        self.expect('KEYWORD')
+        self.expect('KEYWORD')  # FROM
         table = self.expect('IDENTIFIER')
+        
+        # Parse JOINs (optional)
+        joins = []
+        while self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value in ['JOIN', 'INNER', 'LEFT', 'RIGHT']:
+            join = self.parse_join()
+            joins.append(join)
+        
+        # Parse WHERE (optional)
         where = None
         if self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value == 'WHERE':
             self.advance()
             where = self.parse_condition()
-        return SelectStatement(columns, table, where)
+        
+        # Parse GROUP BY (optional)
+        group_by = None
+        if self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value == 'GROUP':
+            self.advance()  # GROUP
+            self.expect('KEYWORD')  # BY
+            group_by = self.parse_group_by()
+        
+        # Parse HAVING (optional)
+        having = None
+        if self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value == 'HAVING':
+            self.advance()
+            having = self.parse_condition()
+        
+        # Parse ORDER BY (optional)
+        order_by = None
+        if self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value == 'ORDER':
+            self.advance()  # ORDER
+            self.expect('KEYWORD')  # BY
+            order_by = self.parse_order_by()
+        
+        return SelectStatement(columns, table, joins, where, group_by, having, order_by)
+    
+    def parse_join(self):
+        # Get join type
+        join_type = 'INNER'
+        if self.current_token.value in ['LEFT', 'RIGHT', 'INNER']:
+            join_type = self.current_token.value
+            self.advance()
+        
+        self.expect('KEYWORD')  # JOIN
+        table = self.expect('IDENTIFIER')
+        self.expect('KEYWORD')  # ON
+        condition = self.parse_join_condition()
+        
+        return JoinClause(join_type, table, condition)
+    
+    def parse_join_condition(self):
+        left = self.expect('IDENTIFIER')
+        operator = self.expect('OPERATOR')
+        right = self.expect('IDENTIFIER')
+        return Condition(left, operator, right)
+    
+    def parse_group_by(self):
+        columns = []
+        while True:
+            col = self.expect('IDENTIFIER')
+            columns.append(col)
+            if self.current_token and self.current_token.type == 'COMMA':
+                self.advance()
+            else:
+                break
+        return columns
+    
+    def parse_order_by(self):
+        orders = []
+        while True:
+            col = self.expect('IDENTIFIER')
+            direction = 'ASC'
+            if self.current_token and self.current_token.type == 'KEYWORD' and self.current_token.value in ['ASC', 'DESC']:
+                direction = self.current_token.value
+                self.advance()
+            orders.append((col, direction))
+            if self.current_token and self.current_token.type == 'COMMA':
+                self.advance()
+            else:
+                break
+        return orders
     
     def parse_insert(self):
         self.expect('KEYWORD')
